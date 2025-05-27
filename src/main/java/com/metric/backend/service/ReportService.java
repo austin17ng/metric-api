@@ -1,12 +1,16 @@
 package com.metric.backend.service;
 
+import com.metric.backend.dto.MetricPointDto;
+import com.metric.backend.dto.ReportDto;
 import com.metric.backend.dto.ReportRequestDto;
 import com.metric.backend.model.*;
 import com.metric.backend.repository.*;
 import jakarta.transaction.Transactional;
 import org.springframework.stereotype.Service;
 
+import java.util.Comparator;
 import java.util.List;
+import java.util.NoSuchElementException;
 import java.util.Optional;
 import java.util.stream.Collectors;
 
@@ -104,5 +108,29 @@ public class ReportService {
             deviceRepository.delete(device);
             return true;
         }).orElse(false);
+    }
+
+    public List<MetricPointDto> getMetricPoints(Long reportId, String metricType) {
+        List<MetricTimeseries> metrics = metricTimeseriesRepository.findByReportIdAndMetricType(reportId, metricType);
+
+        return metrics.stream()
+                .map(m -> new MetricPointDto(m.getTimestamp(), m.getValue()))
+                .sorted(Comparator.comparing(MetricPointDto::getTimestamp))
+                .collect(Collectors.toList());
+    }
+
+    public MetricPointDto getLatestMetricPoint(Long reportId, String metricType) {
+        MetricSingleValue obj = metricSingleValueRepository.findByReportIdAndMetricType(reportId, metricType);
+        if (obj == null) {
+            throw new NoSuchElementException("No metric found for reportId=" + reportId + " and metricType=" + metricType);
+        }
+        return new MetricPointDto(null, obj.getValue());
+    }
+
+    public List<ReportDto> getReportsByPackageName(String packageName) {
+        return reportRepository.findByApplication_PackageName(packageName)
+                .stream()
+                .map(report -> new ReportDto(report.getId(), report.getAppVersion(), report.getReportedAt()))
+                .toList();
     }
 }

@@ -1,6 +1,8 @@
 package com.metric.backend.controller;
 
 import com.metric.backend.common.ApiResponse;
+import com.metric.backend.dto.MetricPointDto;
+import com.metric.backend.dto.ReportDto;
 import com.metric.backend.dto.ReportRequestDto;
 import com.metric.backend.model.Report;
 import com.metric.backend.service.ReportService;
@@ -64,5 +66,24 @@ public class ReportController {
         }
         return ResponseEntity.status(HttpStatus.NOT_FOUND)
                 .body(new ApiResponse<>("fail", "Device not found with deviceId: " + deviceId, null));
+    }
+
+    @GetMapping("/metrics/timeseries")
+    public List<MetricPointDto> getMetricTimeSeries(
+            @RequestParam Long reportId,
+            @RequestParam String metricType) {
+        return reportService.getMetricPoints(reportId, metricType);
+    }
+
+    @GetMapping("/metrics/latest")
+    public MetricPointDto getLatestMetric(
+            @RequestParam Long reportId,
+            @RequestParam String metricType) {
+        return reportService.getLatestMetricPoint(reportId, metricType);
+    }
+
+    @GetMapping("/package")
+    public List<ReportDto> getReports(@RequestParam String packageName) {
+        return reportService.getReportsByPackageName(packageName);
     }
 }
