@@ -1,14 +1,18 @@
 package com.metric.backend.service;
 
-import com.metric.backend.dto.FullReportRequest;
+import com.metric.backend.dto.MetricPointDto;
+import com.metric.backend.dto.ReportDto;
+import com.metric.backend.dto.ReportRequestDto;
 import com.metric.backend.model.*;
 import com.metric.backend.repository.*;
 import jakarta.transaction.Transactional;
-import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 
+import java.util.Comparator;
 import java.util.List;
+import java.util.NoSuchElementException;
 import java.util.Optional;
+import java.util.stream.Collectors;
 
 @Service
 public class ReportService {
@@ -27,60 +31,61 @@ public class ReportService {
     }
 
     @Transactional
-    public Report createOrUpdateFullReport(FullReportRequest dto) {
+    public Long saveReport(ReportRequestDto dto) {
         // 1. Upsert Application by packageName
         Application application = applicationRepository.findById(dto.getPackageName())
-                .orElseGet(Application::new);
-        application.setPackageName(dto.getPackageName());
-        application.setAppName(dto.getAppName());
-        applicationRepository.save(application);
+                .orElseGet(() -> {
+                    Application app = new Application();
+                    app.setPackageName(dto.getPackageName());
+                    app.setAppName(dto.getAppName());
+                    return applicationRepository.save(app);
+                });
 
         // 2. Upsert Device by deviceId
         Device device = deviceRepository.findByDeviceId(dto.getDeviceId())
-                .orElseGet(Device::new);
-        device.setDeviceId(dto.getDeviceId());
-        device.setDeviceName(dto.getDeviceName());
-        device.setPlatform(dto.getPlatform());
-        device = deviceRepository.save(device);
+                .orElseGet(() -> {
+                    Device dev = new Device();
+                    dev.setDeviceId(dto.getDeviceId());
+                    dev.setDeviceName(dto.getDeviceName());
+                    dev.setPlatform(dto.getPlatform());
+                    return deviceRepository.save(dev);
+                });
 
         // 3. Create Report (new each time)
-        final Report savedReport = new Report();
-        savedReport.setPackageName(dto.getPackageName());
-        savedReport.setAppVersion(dto.getAppVersion());
-        savedReport.setReportedAt(dto.getReportedAt());
-        savedReport.setDevice(device);
-        reportRepository.save(savedReport);
+        Report report = new Report();
+        report.setApplication(application);
+        report.setDevice(device);
+        report.setAppVersion(dto.getAppVersion());
+        report.setReportedAt(dto.getReportedAt());
 
-        // 4. Save metric timeseries
-        if (dto.getMetricsTimeSeries() != null) {
-            List<MetricTimeseries> tsMetrics = dto.getMetricsTimeSeries().stream()
-                    .map(m -> {
-                        MetricTimeseries metric = new MetricTimeseries();
-                        metric.setReport(savedReport);
-                        metric.setMetricType(m.getMetricType());
-                        metric.setValue(m.getValue());
-                        metric.setTimestamp(m.getTimestamp());
-                        return metric;
-                    })
-                    .toList();
-            metricTimeseriesRepository.saveAll(tsMetrics);
-        }
+        // Step 4: Add metric single values
+        List<MetricSingleValue> singleValues = dto.getMetricsSingleValue().stream()
+                .map(metric -> {
+                    MetricSingleValue m = new MetricSingleValue();
+                    m.setMetricType(metric.getMetricType());
+                    m.setValue(metric.getValue());
+                    m.setReport(report); // set back-reference
+                    return m;
+                }).collect(Collectors.toList());
 
-        // 5. Save metric single value
-        if (dto.getMetricsSingleValue() != null) {
-            List<MetricSingleValue> singleMetrics = dto.getMetricsSingleValue().stream()
-                    .map(m -> {
-                        MetricSingleValue metric = new MetricSingleValue();
-                        metric.setReport(savedReport);
-                        metric.setMetricType(m.getMetricType());
-                        metric.setValue(m.getValue());
-                        return metric;
-                    })
-                    .toList();
-            metricSingleValueRepository.saveAll(singleMetrics);
-        }
+        report.setMetricSingleValues(singleValues);
 
-        return savedReport;
+        // Step 5: Add metric time series
+        List<MetricTimeseries> timeseries = dto.getMetricsTimeSeries().stream()
+                .map(metric -> {
+                    MetricTimeseries m = new MetricTimeseries();
+                    m.setMetricType(metric.getMetricType());
+                    m.setValue(metric.getValue());
+                    m.setTimestamp(metric.getTimestamp());
+                    m.setReport(report); // set back-reference
+                    return m;
+                }).collect(Collectors.toList());
+
+        report.setMetricTimeseries(timeseries);
+
+        // Step 6: Save Report
+        Report savedReport = reportRepository.save(report);
+        return savedReport.getId();
     }
 
     public List<Report> getAllReports() {
@@ -89,5 +94,43 @@ public class ReportService {
 
     public Optional<Report> getReportById(Long id) {
         return reportRepository.findById(id);
+    }
+
+    public boolean deleteReportById(Long id) {
+        return reportRepository.findById(id).map(r -> {
+            reportRepository.deleteById(id);
+            return true;
+        }).orElse(false);
+    }
+
+    public boolean deleteByDeviceId(String deviceId) {
+        return deviceRepository.findByDeviceId(deviceId).map(device -> {
+            deviceRepository.delete(device);
+            return true;
+        }).orElse(false);
+    }
+
+    public List<MetricPointDto> getMetricPoints(Long reportId, String metricType) {
+        List<MetricTimeseries> metrics = metricTimeseriesRepository.findByReportIdAndMetricType(reportId, metricType);
+
+        return metrics.stream()
+                .map(m -> new MetricPointDto(m.getTimestamp(), m.getValue()))
+                .sorted(Comparator.comparing(MetricPointDto::getTimestamp))
+                .collect(Collectors.toList());
+    }
+
+    public MetricPointDto getLatestMetricPoint(Long reportId, String metricType) {
+        MetricSingleValue obj = metricSingleValueRepository.findByReportIdAndMetricType(reportId, metricType);
+        if (obj == null) {
+            throw new NoSuchElementException("No metric found for reportId=" + reportId + " and metricType=" + metricType);
+        }
+        return new MetricPointDto(null, obj.getValue());
+    }
+
+    public List<ReportDto> getReportsByPackageName(String packageName) {
+        return reportRepository.findByApplication_PackageName(packageName)
+                .stream()
+                .map(report -> new ReportDto(report.getId(), report.getAppVersion(), report.getReportedAt()))
+                .toList();
     }
 }

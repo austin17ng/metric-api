@@ -1,5 +1,4 @@
 package com.metric.backend.dto;
-import jakarta.persistence.*;
 import lombok.AllArgsConstructor;
 import lombok.Data;
 import lombok.NoArgsConstructor;
@@ -10,7 +9,7 @@ import java.util.List;
 @Data
 @NoArgsConstructor
 @AllArgsConstructor
-public class FullReportRequest {
+public class ReportRequestDto {
     // Application info
     private String packageName;
     private String appName;

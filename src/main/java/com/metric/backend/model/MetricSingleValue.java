@@ -6,14 +6,12 @@ import lombok.*;
 @Entity
 @Table(name = "metrics_single_value")
 @Data
-@Getter
-@Setter
 @NoArgsConstructor
 @AllArgsConstructor
 public class MetricSingleValue {
+
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
-    @Column(name = "id")
     private Long id;
 
     @ManyToOne
