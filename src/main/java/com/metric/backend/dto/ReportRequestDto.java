@@ -4,6 +4,7 @@ import lombok.Data;
 import lombok.NoArgsConstructor;
 
 import java.time.LocalDateTime;
+import java.util.ArrayList;
 import java.util.List;
 
 @Data
@@ -24,6 +25,6 @@ public class ReportRequestDto {
     private LocalDateTime reportedAt;
 
     // Metrics info
-    private List<MetricTimeseriesDto> metricsTimeSeries;
-    private List<MetricSingleValueDto> metricsSingleValue;
+    private List<MetricTimeseriesDto> metricsTimeSeries = new ArrayList<>();
+    private List<MetricSingleValueDto> metricsSingleValue = new ArrayList<>();
 }
