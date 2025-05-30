@@ -7,4 +7,9 @@ spring:
       hibernate:
         format_sql: true
   profiles:
-    active: prod
+    active: dev
+  springdoc:
+    api-docs:
+      enabled=true
+    swagger-ui:
+      enabled=true
